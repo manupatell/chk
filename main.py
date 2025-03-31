@@ -11,7 +11,7 @@ import asyncio
 # Configuration
 TOKEN = "8178988656:AAElyrhMLCx8PKy4gGkO7mFB-W0b27ctuso"
 URL = "https://idfc.dpdns.org/HSTR/api/cookie.php"
-GROUP_CHAT_ID = "-1004651056352"  # Group ID
+GROUP_CHAT_ID = "-4651056352"  # Group ID
 
 # Flask app for Koyeb health check
 app = Flask(__name__)
