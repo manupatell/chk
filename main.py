@@ -1,42 +1,60 @@
-import time
+import telegram
+from telegram.ext import Updater, CommandHandler
 import requests
-import telebot
+import time
+import threading
+from flask import Flask
 
-# Telegram bot token and chat ID
-TELEGRAM_ACCESS_TOKEN = '8178988656:AAElyrhMLCx8PKy4gGkO7mFB-W0b27ctuso'
-CHAT_ID = '-1002505801351'
+# Telegram bot setup
+TOKEN = "8178988656:AAElyrhMLCx8PKy4gGkO7mFB-W0b27ctuso"
+URL = "https://idfc.dpdns.org/HSTR/api/cookie.php"
 
-# URL to send requests
-URL = 'https://idfc.dpdns.org/HSTR/api/cookie.php'
+# Flask app for health check
+app = Flask(__name__)
 
-# Initialize the bot
-bot = telebot.TeleBot(TELEGRAM_ACCESS_TOKEN)
+@app.route('/')
+def health_check():
+    return "Bot is running", 200
 
-# Send request to the URL and check cookies
-def send_request():
-    try:
-        response = requests.get(URL)
-        cookies = response.cookies.get_dict()
-        
-        if not cookies:
-            bot.send_message(CHAT_ID, '❌ No cookies found. Retrying in 5 seconds...')
-            return False
-        
-        # Check for required cookies
-        if 'CloudFront-Key-Pair-Id' in cookies or 'hdntl' in cookies:
-            bot.send_message(CHAT_ID, '✅ Cookies found. Waiting 15 minutes before the next request...')
-            time.sleep(900)  # 900 seconds = 15 minutes
-        else:
-            bot.send_message(CHAT_ID, '⚠️ Cookies found, but target cookies are missing. Retrying...')
-            return False
-        
-        return True
-    
-    except requests.RequestException as e:
-        bot.send_message(CHAT_ID, f'❗ Error: {str(e)}')
-        return False
+def start(update, context):
+    chat_id = update.message.chat_id
+    context.bot.send_message(chat_id=chat_id, text="Bot started! Checking URL now...")
+    threading.Thread(target=check_url, args=(context, chat_id)).start()
 
-# Main loop to keep the bot running
-while True:
-    if not send_request():
-        time.sleep(5)  # Retry after 5 seconds if cookies are not found
+def check_url(context, chat_id):
+    while True:
+        try:
+            response = requests.get(URL)
+            cookies = response.cookies.get_dict()
+
+            if not cookies:
+                context.bot.send_message(chat_id=chat_id, text="No cookies found. Resending request immediately...")
+                continue
+            else:
+                cookie_names = cookies.keys()
+                message = f"Cookies found: {cookie_names}"
+                context.bot.send_message(chat_id=chat_id, text=message)
+
+                if "CloudFront-Key-Pair-Id" in cookie_names or "hdntl" in cookie_names:
+                    context.bot.send_message(chat_id=chat_id, text="Found CloudFront-Key-Pair-Id or hdntl. Waiting 20 minutes...")
+                    time.sleep(1200)
+                else:
+                    context.bot.send_message(chat_id=chat_id, text="No specific cookies found. Checking again immediately...")
+                    continue
+
+        except Exception as e:
+            context.bot.send_message(chat_id=chat_id, text=f"Error: {str(e)}. Retrying in 5 seconds...")
+            time.sleep(5)
+
+def run_bot():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+    dp.add_handler(CommandHandler("start", start))
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    # Start Flask in a separate thread
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=8080)).start()
+    # Start the Telegram bot
+    run_bot()
